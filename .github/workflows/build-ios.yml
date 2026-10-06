@@ -7,57 +7,57 @@ jobs:
   build:
     runs-on: macos-latest
 
+    env:
+      SDL_VERSION: 2.32.10
+      FFMPEG_VERSION: "9.0"
+      YY_THUNKS_VERSION: v1.2.1
+      GH_CPU_ARCH: arm64
+      GH_CPU_OS: ios
+      GH_CROSSCOMPILING: false
+
     steps:
-      - name: Baixar Xash3D
+      - name: Baixar Xash3D FWGS
         uses: actions/checkout@v6
         with:
           repository: FWGS/xash3d-fwgs
           submodules: recursive
 
-      - name: Preparar dependencias
+      - name: Instalar dependências iOS
         run: |
-          brew install python
-          python3 --version
+          bash scripts/gha/deps_ios.sh
 
-      - name: Baixar SDL2
+      - name: Compilar Xash3D para iOS ARM64
+        env:
+          FWGS_PFX_PASSWORD: ${{ secrets.FWGS_PFX_PASSWORD }}
         run: |
-          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2
+          bash scripts/gha/build_ios.sh
 
-      - name: Compilar SDL2 para iOS
+      - name: Verificar arquivos gerados
         run: |
-          cd SDL2/Xcode/SDL
-          xcodebuild \
-            -project SDL.xcodeproj \
-            -scheme SDL \
-            -sdk iphoneos \
-            -configuration Release \
-            -arch arm64 \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+          echo "=== ARTIFACTS ==="
+          find artifacts -type f -print || true
 
-      - name: Configurar Xash para iOS ARM64
-        run: |
-          ./waf configure \
-            --ios \
-            --enable-bundled-deps \
-            --sdl2="$GITHUB_WORKSPACE/SDL2/Xcode/SDL/build/Release-iphoneos/SDL2.framework"
-
-      - name: Compilar Xash
-        run: |
-          ./waf build
-
-      - name: Procurar bibliotecas
-        run: |
-          find build -type f \( -name "*.dylib" -o -name "*.a" \) -print
+          echo "=== BUILD ==="
+          find build -type f \( -name "*.dylib" -o -name "*.framework" -o -name "*.a" \) -print || true
 
       - name: Compactar resultado
         run: |
-          mkdir -p output
-          cp -R build/ios/* output/ || true
-          cd output
+          mkdir -p xash-ios-result
+
+          if [ -d artifacts ]; then
+            cp -R artifacts/. xash-ios-result/
+          fi
+
+          if [ -d build/ios ]; then
+            mkdir -p xash-ios-result/build-ios
+            cp -R build/ios/. xash-ios-result/build-ios/
+          fi
+
+          cd xash-ios-result
           zip -r "$GITHUB_WORKSPACE/xash-ios-arm64.zip" .
 
       - name: Enviar resultado
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xash-ios-arm64
           path: xash-ios-arm64.zip
